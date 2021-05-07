@@ -1,0 +1,222 @@
+library(ggpmisc)
+library(forcats)
+library(viridis)
+library(corrplot)
+library(ggplot2)
+library(dplyr)
+library(glmulti)
+library(gpubr)
+library(ggpubr)
+
+setwd("~/Desktop/For GABOR PAH LIVER TCGA-LICH/Rizwan")
+
+
+
+ par(mfrow=c(1, 1))
+data <- read.table("/Users/dogusaltintas/Library/Mobile Documents/com~apple~CloudDocs/Lab files/Créteil/For GABOR PAH LIVER TCGA-LICH/Rizwan/Classeur1.txt", dec=",", sep="\t", header=T)
+
+
+
+
+
+model <- glmulti(y = 'PAH', xr='Age', data = data)
+
+#$bestmodel
+#[1] "PAH ~ 1 + Age"
+
+
+ model_lin <- lm(data=data, PAH~Age)
+ summary(model_lin)
+ model_pol_2 <- lm(data=data, PAH~Age + I(Age^2))
+ model_pol_3 <- lm(data=data, PAH~Age + I(Age^2)+ I(Age^3))
+
+ plot(PAH~Age, data = data)
+	abline(model_lin, lwd=3, col="black")
+ lines(smooth.spline(data$Age, predict(model_pol_2)), col="blue", lwd=3)
+ lines(smooth.spline(data$Age, predict(model_pol_3)), col="red", lwd=3)
+ 
+ anova(model_lin, model_pol_2, model_pol_3)
+ 
+ fit <- lm(PAH ~ 1 + Age, data=data)
+ 
+ summary(fit)
+ 
+ ggplot(data, aes(x=Age, y=PAH)) + geom_point(color="red") + theme_classic() +  geom_smooth(linetype="dashed", se=F, formula='y~splines::bs(x, 3)', method=lm) +
+ stat_poly_eq(formula = 'y~splines::bs(x, 3)',
+                 eq.with.lhs = "italic(hat(y))~`=`~",
+                 aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")), 
+                 parse = TRUE)
+ 
+ fit <- lm(PAH ~  splines::bs(Age, 3), data=data)
+ 
+
+				 
+				 
+	data$tertiles <- NA
+	colnames(data) <- c("PAH", "Age", "Sexe", "GCH1", "CDKN1A", "tertiles")
+	data <- data %>%
+	mutate(tertiles = ntile(Age,3)) %>%
+	mutate(tertiles=if_else(tertiles == 1, 'Young', if_else(tertiles == 2, 'Medium', 
+							ifelse(tertiles==3, 'Old','Very Old'))))				 
+							
+						
+
+data$tertiles <- as.factor(data$tertiles)
+data$tertiles <- fct_relevel(data$tertiles, c("Young", "Medium", "Old"))
+
+
+	data$explanation <- ifelse(data$tertiles=="Young", "[13-50[",
+							ifelse(data$tertiles == "Medium", "[50-69[", ">69"
+								)
+								)
+	
+
+	
+
+	data$explanation <- fct_relevel(data$explanation, c("[13-50[", "[50-69[",  '>69'))
+
+compare_means(PAH~explanation, data=data, method='t.test')
+my_comparisons <- list(c("[13-50[", "[50-69["), c("[13-50[", ">69"), c("[50-69[", ">69" ))
+
+#.y.   group1  group2        p p.adj p.format p.signif method
+#  <chr> <chr>   <chr>     <dbl> <dbl> <chr>    <chr>    <chr> 
+#1 PAH   [13-50[ [50-69[ 0.636   0.64  0.6362   ns       T-test
+#2 PAH   [13-50[ >69     0.00587 0.018 0.0059   **       T-test
+#3 PAH   [50-69[ >69     0.0573  0.11  0.0573   ns       T-test
+
+pdf(paper='a4', "/Users/dogusaltintas/Desktop/For GABOR PAH LIVER TCGA-LICH/Rizwan/results.pdf")
+
+
+ggplot(data, aes(x=Age, y=PAH)) + geom_point(color="red") + theme_classic() +  geom_smooth(linetype="dashed", se=F, formula='y~splines::bs(x, 3)', method=lm) +
+stat_poly_eq(formula = 'y~splines::bs(x, 3)',
+                eq.with.lhs = "italic(hat(y))~`=`~",
+                aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~") , size = 2.4), 
+                parse = TRUE) + ggtitle("Age-dependent PAH expression \n in human liver") +
+			 labs(x="Age (years)", y="Standardized PAH expression", fill="", color="", subtitle="GSE107039 data, n=33") +
+			 theme(
+			 plot.title = element_text(color="black", size=22, face="bold.italic", hjust=.5),
+			 plot.subtitle = element_text(color="darkgray", size=20.475, face="bold"),
+			 axis.title.x = element_text(color="black", size=20.475, face="bold"),
+			 axis.title.y = element_text(color="black", size=20.475, face="bold"),
+			 axis.text.x = element_text(face="bold", color="black", 
+			                            size=20.475),
+			 axis.text.y = element_text(face="bold", color="black", 
+			                            size=20.475),
+			axis.ticks.length.y = unit(3.5, "mm"),
+			axis.ticks.length.x = unit(3.5, "mm"),
+			axis.ticks = element_line(size = 1.5),
+			axis.line = element_line(size = 1.5)							
+			 ) +
+			 theme(legend.position="none") + scale_x_continuous( breaks = seq(0, 100, by = 20))
+
+
+
+
+ggplot(data, aes(x=explanation, y=PAH, fill=explanation, color=explanation)) + 
+geom_boxplot(alpha=.5) + 
+geom_jitter(width = .05, height = .05) + 
+theme_classic() + 
+scale_fill_manual(values=c("lightblue", "blue", "navy")) + scale_color_manual(values=c("lightblue", "blue", "navy")) +
+stat_compare_means(comparison=my_comparisons,  method='t.test') + ggtitle("Age-dependent PAH expression in human liver") + 
+stat_compare_means(method='anova', label.x = .7, label.y = 4)+
+labs(x="Age Range", y="Standardized PAH expression", fill="", color="", subtitle="GSE107039 data, n=33") +
+theme(
+plot.title = element_text(color="black", size=14, face="bold.italic", hjust=.5),
+plot.subtitle = element_text(color="darkgray", size=12, face="bold"),
+axis.title.x = element_text(color="black", size=12, face="bold"),
+axis.title.y = element_text(color="black", size=12, face="bold"),
+axis.text.x = element_text(face="bold", color="black", 
+                           size=11),
+axis.text.y = element_text(face="bold", color="black", 
+                           size=11)
+) +
+theme(legend.position="none")	
+
+
+
+
+
+##############Corr matrix
+data$GCH1 <- scale(data$GCH1)
+data$CDKN1A <- scale(data$CDKN1A)
+
+corr <- data.frame(data$PAH, data$Age, data$CDKN1A)
+colnames(corr) <- c("PAH", "Age", "CDKN1A")
+M<-cor(corr)
+		 ### Ajout d'une fonction pour les p-values
+
+		 cor.mtest <- function(mat, ...) {
+		     mat <- as.matrix(mat)
+		     n <- ncol(mat)
+		     p.mat<- matrix(NA, n, n)
+		     diag(p.mat) <- 0
+		     for (i in 1:(n - 1)) {
+		         for (j in (i + 1):n) {
+		             tmp <- cor.test(mat[, i], mat[, j], ...)
+		             p.mat[i, j] <- p.mat[j, i] <- tmp$p.value
+		         }
+		     }
+		   colnames(p.mat) <- rownames(p.mat) <- colnames(mat)
+		   p.mat
+		 }
+
+		 p.mat <- cor.mtest(corr)
+
+		 col<- colorRampPalette(c("navy", "white", "red"))(100)
+
+		# col <- colorRampPalette(c("#BB4444", "#EE9988", "#FFFFFF", "#77AADD", "#4477AA"))(100)
+
+
+		 #corrplot(M, method="color", type="upper", col=col, bg="white", tl.col="black", tl.srt=45, 
+		  #addCoef.col = "black", diag=F, p.mat = p.mat, sig.level = 0.05, insig = "blank")
+
+		 corrplot(M, method="circle", col=col, bg="white", tl.col="black", tl.srt=90, 
+		   diag=T, p.mat = p.mat, sig.level = 0.05, insig = "blank", tl.cex = 0.9)
+
+
+###Then plot biplots
+
+# ggplot(data, aes(x=GCH1, y=PAH)) + geom_point(color="red") + theme_classic() +  geom_smooth(linetype="dashed", se=F, formula='y~x', method=lm) +
+# stat_poly_eq(formula = 'y~x',
+#                 eq.with.lhs = "italic(hat(y))~`=`~",
+#                 aes(label = paste(..eq.label.., ..rr.label.., ..p.value.label.., sep = "~~~")), 
+#                 parse = TRUE) + ggtitle("PAH/GCH1 biplot, human liver") +
+#				 labs(x="Standardized GCH1 expression", y="Standardized PAH expression", fill="", color="", subtitle="GSE107039 data, n=33") +
+#				 theme(
+#				 plot.title = element_text(color="black", size=14, face="bold.italic", hjust=.5),
+#				 plot.subtitle = element_text(color="darkgray", size=12, face="bold"),
+#				 axis.title.x = element_text(color="black", size=12, face="bold"),
+#				 axis.title.y = element_text(color="black", size=12, face="bold"),
+#				 axis.text.x = element_text(face="bold", color="black", 
+#				                            size=11),
+#				 axis.text.y = element_text(face="bold", color="black", 
+#				                            size=11)
+#				 ) +
+#				 theme(legend.position="none")
+				 
+				 
+ ggplot(data, aes(x=CDKN1A, y=PAH)) + geom_point(color="red") + theme_classic() +  geom_smooth(linetype="dashed", se=F, formula='y~x', method=lm) +
+ stat_poly_eq(formula = 'y~x',
+                 eq.with.lhs = "italic(hat(y))~`=`~",
+                 aes(label = paste(..eq.label.., ..rr.label.., ..p.value.label.., sep = "~~~"), size = 2.4), 
+                 parse = TRUE) + ggtitle("PAH/CDKN1A biplot \n in human liver") +
+				 labs(x="Standardized CDKN1A expression", y="Standardized PAH expression", fill="", color="", subtitle="GSE107039 data, n=33") +
+				 theme(
+				 plot.title = element_text(color="black", size=22, face="bold.italic", hjust=.5),
+				 plot.subtitle = element_text(color="darkgray", size=20.475, face="bold"),
+				 axis.title.x = element_text(color="black", size=20.475, face="bold"),
+				 axis.title.y = element_text(color="black", size=20.475, face="bold"),
+				 axis.text.x = element_text(face="bold", color="black", 
+				                            size=20.475),
+				 axis.text.y = element_text(face="bold", color="black", 
+				                            size=20.475),
+				axis.ticks.length.y = unit(3.5, "mm"),
+				axis.ticks.length.x = unit(3.5, "mm"),
+				axis.ticks = element_line(size = 1.5),
+				axis.line = element_line(size = 1.5)							
+				 ) +
+				 theme(legend.position="none")
+				 
+				 
+dev.off()
+				 				 
